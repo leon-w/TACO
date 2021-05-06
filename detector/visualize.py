@@ -21,6 +21,8 @@ from matplotlib import patches,  lines
 from matplotlib.patches import Polygon
 import IPython.display
 
+import cv2
+
 # Root directory of the project
 ROOT_DIR = os.path.abspath("../")
 
@@ -167,6 +169,61 @@ def display_instances(image, boxes, masks, class_ids, class_names,
     ax.imshow(masked_image.astype(np.uint8))
     if auto_show:
         plt.show()
+
+def render_instances(image, boxes, masks, class_ids, class_names, scores, show_mask=True, show_bbox=True, color_map=None):
+    """
+    boxes: [num_instance, (y1, x1, y2, x2, class_id)] in image coordinates.
+    masks: [height, width, num_instances]
+    class_ids: [num_instances]
+    class_names: list of class names of the dataset
+    show_mask, show_bbox: To show masks and bounding boxes or not
+    """
+    # Number of instances
+    N = boxes.shape[0]
+    if N:
+        assert boxes.shape[0] == masks.shape[-1] == class_ids.shape[0]
+
+    # Generate random colors
+    if color_map is None:
+        colors = random_colors(N)
+    else:
+        colors = [color_map[class_id] for class_id in class_ids]
+
+    masked_image = image.astype(np.uint8).copy()
+    for i in range(N):
+        if not np.any(boxes[i]):
+            # Skip this instance. Has no bbox. Likely lost in image cropping.
+            continue
+
+        color = np.array(colors[i]) * 255
+        y1, x1, y2, x2 = boxes[i]
+
+        # Caption
+        class_id = class_ids[i]
+        score = scores[i]
+        label = class_names[class_id]
+        caption = "{} {:.3f}".format(label, score) if score else label
+        cv2.putText(masked_image, caption, (x1, y1 - 4), cv2.FONT_HERSHEY_DUPLEX, 1, (255, 255, 255), 2, lineType = cv2.LINE_AA)
+
+        # Mask
+        mask = masks[:, :, i]
+        if show_mask:
+            masked_image = apply_mask(masked_image, mask, color / 255, alpha=0.4)
+
+        # Mask Polygon
+        # Pad to ensure proper polygons for masks that touch image edges.
+        padded_mask = np.zeros((mask.shape[0] + 2, mask.shape[1] + 2), dtype=np.uint8)
+        padded_mask[1:-1, 1:-1] = mask
+        contours = find_contours(padded_mask, 0.5)
+        for verts in contours:
+            # Subtract the padding and flip (y, x) to (x, y)
+            verts = np.fliplr(verts) - 1            
+            cv2.polylines(masked_image, verts.astype(np.int32).reshape((-1,1,2)), True, color, 2, cv2.LINE_AA)
+
+        # Bounding box
+        cv2.rectangle(masked_image, (x1, y1), (x2, y2), color, 2)
+
+    return masked_image
 
 
 def display_differences(image,

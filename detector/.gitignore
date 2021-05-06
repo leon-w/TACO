@@ -1,0 +1,4 @@
+__pycache__/
+*.h5
+tmp_annotate_*/
+*.mp4
